@@ -37,20 +37,13 @@
               (. menu append
                  (MenuItem. #js {:label (str "Look Up “" selection-text "”")
                                  :click #(. web-contents showDefinitionForSelection)})))
-
-(when has-text?
-  (. menu append
-     (MenuItem. #js {:label "Search with Kagi"
-                     :click #(let [url (js/URL. "https://www.kagi.com/search")]
-                               (.. url -searchParams (set "q" selection-text))
-                               (.. shell (openExternal (.toString url))))}))
-(when has-text?
-  (. menu append
-     (MenuItem. #js {:label "Search with DuckDuckGo"
-                     :click #(let [url (js/URL. "https://www.duckduckgo.com/search")]
-                               (.. url -searchParams (set "q" selection-text))
-                               (.. shell (openExternal (.toString url))))}))
-  (. menu append (MenuItem. #js {:type "separator"})))
+            (when has-text?
+              (. menu append
+                 (MenuItem. #js {:label "Search with Kagi"
+                                 :click #(let [url (js/URL. "https://www.kagi.com/search")]
+                                           (.. url -searchParams (set "q" selection-text))
+                                           (.. shell (openExternal (.toString url))))}))
+              (. menu append (MenuItem. #js {:type "separator"})))
 
             (when editable?
               (when has-text?
@@ -97,8 +90,7 @@
                                           (. clipboard writeImage (. nativeImage createFromPath (subs (.-srcURL params) 7))))})))
 
             (when (not-empty (.-items menu))
-              
-(. menu popup))]
+              (. menu popup))))]
 
     (doto web-contents
       (.on "context-menu" context-menu-handler))
