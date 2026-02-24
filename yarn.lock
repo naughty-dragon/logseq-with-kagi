@@ -2216,14 +2216,6 @@ base@^0.11.1:
     mixin-deep "^1.2.0"
     pascalcase "^0.1.1"
 
-better-sqlite3@12.6.0:
-  version "12.6.0"
-  resolved "https://registry.yarnpkg.com/better-sqlite3/-/better-sqlite3-12.6.0.tgz#77ada940ca35943bd677bcb2937615b7079604b7"
-  integrity sha512-FXI191x+D6UPWSze5IzZjhz+i9MK9nsuHsmTX9bXVl52k06AfZ2xql0lrgIUuzsMsJ7Vgl5kIptvDgBLIV3ZSQ==
-  dependencies:
-    bindings "^1.5.0"
-    prebuild-install "^7.1.1"
-
 big-integer@1.6.x:
   version "1.6.52"
   resolved "https://registry.yarnpkg.com/big-integer/-/big-integer-1.6.52.tgz#60a887f3047614a8e1bffe5d7173490a97dc8c85"
