@@ -97,7 +97,8 @@
                                           (. clipboard writeImage (. nativeImage createFromPath (subs (.-srcURL params) 7))))})))
 
             (when (not-empty (.-items menu))
-              (. menu popup))))]
+              
+(. menu popup))]
 
     (doto web-contents
       (.on "context-menu" context-menu-handler))
