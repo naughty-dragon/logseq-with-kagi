@@ -4,6 +4,7 @@
             [frontend.components.block :as block]
             [frontend.components.dnd :as dnd-component]
             [frontend.components.icon :as icon]
+            [frontend.components.left-sidebar-util :as sidebar-util]
             [frontend.components.repo :as repo]
             [frontend.config :as config]
             [frontend.context.i18n :refer [t]]
@@ -217,6 +218,7 @@
   [{:keys [default-home route-match route-name srs-open?]}]
   (let [navs [:flashcards :all-pages :graph-view :tag/tasks :tag/assets]
         _preferred-language (state/use-sub [:preferred-language])
+        cards-due-count (state/use-sub :srs/cards-due-count)
         [checked-navs set-checked-navs!] (hooks/use-state (or (storage/get :ls-sidebar-navigations)
                                                             [:flashcards :all-pages :graph-view]))]
 
@@ -241,9 +243,8 @@
              (shui/tabler-icon "filter-edit" {:size 14})]}
      [:div.sidebar-navigations.flex.flex-col.mt-1
        ;; required custom home page
-      (let [page (:page default-home)
-            enable-journals? (state/enable-journals? (state/get-current-repo))]
-        (if (and page (not enable-journals?))
+      (let [page (:page default-home)]
+        (if page
           (sidebar-item
            {:class "home-nav"
             :title page
@@ -254,34 +255,32 @@
             :icon "home"
             :shortcut :go/home})
 
-          (when enable-journals?
-            (sidebar-item
-             {:class "journals-nav"
-              :active (and (not srs-open?)
-                           (or (= route-name :all-journals) (= route-name :home)))
-              :title (t :nav/journals)
-              :on-click-handler (fn [e]
-                                  (if (gobj/get e "shiftKey")
-                                    (route-handler/sidebar-journals!)
-                                    (route-handler/go-to-journals!)))
-              :icon "calendar"
-              :shortcut :go/journals}))))
+          (sidebar-item
+           {:class "journals-nav"
+            :active (and (not srs-open?)
+                         (or (= route-name :all-journals) (= route-name :home)))
+            :title (t :nav/journals)
+            :on-click-handler (fn [e]
+                                (if (gobj/get e "shiftKey")
+                                  (route-handler/sidebar-journals!)
+                                  (route-handler/go-to-journals!)))
+            :icon "calendar"
+            :shortcut :go/journals})))
 
       (for [nav checked-navs]
         (cond
           (= nav :flashcards)
           (when (state/enable-flashcards? (state/get-current-repo))
-            (let [num (state/use-sub :srs/cards-due-count)]
-              (sidebar-item
-               {:class "flashcards-nav"
-                :title (t :nav/flashcards)
-                :icon "cards"
-                :shortcut :go/flashcards
-                :active srs-open?
-                :on-click-handler #(do (fsrs/update-due-cards-count)
-                                       (state/pub-event! [:modal/show-cards]))
-                :more (when (and num (not (zero? num)))
-                        [:span.ml-1.inline-block.py-0.5.px-3.text-xs.font-medium.rounded-full.fade-in num])})))
+            (sidebar-item
+             {:class "flashcards-nav"
+              :title (t :nav/flashcards)
+              :icon "cards"
+              :shortcut :go/flashcards
+              :active srs-open?
+              :on-click-handler #(do (fsrs/update-due-cards-count)
+                                     (state/pub-event! [:modal/show-cards]))
+              :more (when (and cards-due-count (not (zero? cards-due-count)))
+                      [:span.ml-1.inline-block.py-0.5.px-3.text-xs.font-medium.rounded-full.fade-in cards-due-count])}))
 
           (= nav :graph-view)
           (sidebar-item
@@ -313,9 +312,12 @@
 
 (hsx/defc sidebar-favorites
   []
-  (let [_favorites-updated? (state/use-sub :favorites/updated?)
+  (let [current-repo (state/use-sub :git/current-repo)
+        db-restoring? (state/use-sub :db/restoring?)
+        _favorites-updated? (state/use-sub :favorites/updated?)
         _preferred-language (state/use-sub [:preferred-language])
-        favorite-entities (page-handler/get-favorites)]
+        favorite-entities (when (and current-repo (false? db-restoring?))
+                            (page-handler/get-favorites))]
     (sidebar-content-group
      [:a.wrap-th
       [:strong.flex-1 (t :sidebar.left/favorites)]]
@@ -340,8 +342,12 @@
 
 (hsx/defc sidebar-recent-pages
   []
-  (let [_preferred-language (state/use-sub [:preferred-language])
-        pages (recent-handler/get-recent-pages)]
+  (let [current-repo (state/use-sub :git/current-repo)
+        db-restoring? (state/use-sub :db/restoring?)
+        _recent-page-ids (state/use-sub [:ui/recent-pages current-repo])
+        _preferred-language (state/use-sub [:preferred-language])
+        pages (when (and current-repo (false? db-restoring?))
+                (recent-handler/get-recent-pages))]
        (sidebar-content-group
         [:a.wrap-th [:strong.flex-1 (t :sidebar.left/recent-pages)]]
 
@@ -423,8 +429,7 @@
                               (set-local-closing? false)
                               (close-modal-fn)))
        :on-click #(when-let [^js target (and (util/sm-breakpoint?) (.-target %))]
-                    (when (some (fn [sel] (boolean (.closest target sel)))
-                                [".favorites .bd" ".recent .bd" ".dropdown-wrapper" ".nav-header"])
+                    (when (sidebar-util/mobile-navigation-target? target)
                       (close-fn)))}
 
       [:div.wrap

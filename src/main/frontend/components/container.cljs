@@ -30,6 +30,7 @@
             [frontend.version :refer [version]]
             [goog.dom :as gdom]
             [goog.object :as gobj]
+            [logseq.common.version :as build-version]
             [logseq.shui.dialog.core :as shui-dialog]
             [logseq.shui.hooks :as hooks]
             [logseq.shui.popup.core :as shui-popup]
@@ -132,11 +133,10 @@
                                   (:page default-home))
                              [:page (:page default-home)]
 
-                             (or (not (state/enable-journals? current-repo))
-                                 (let [latest-journals (db/get-latest-journals (state/get-current-repo) 1)]
-                                   (and config/publishing?
-                                        (not default-home)
-                                        (empty? latest-journals))))
+                             (let [latest-journals (db/get-latest-journals (state/get-current-repo) 1)]
+                               (and config/publishing?
+                                    (not default-home)
+                                    (empty? latest-journals)))
                              [:route :all-pages])]
        (hooks/use-effect!
         (fn []
@@ -204,27 +204,28 @@
 
 (hsx/defc new-block-mode
   []
-  (when (state/use-sub [:document/mode?])
-    (ui/tooltip
-     [:a.block.px-1.text-sm.font-medium.bg-base-2.rounded-md.mx-2
-      {:on-click state/toggle-document-mode!}
-      "D"]
-     [:div.p-2
-      [:p.mb-2 [:b (t :editor.document-mode/title)]]
-      [:ul
-       [:li
-        [:p.inline-block.mr-1
-         (interpolate-rich-text-node
-          (t :editor.document-mode/new-block-hint)
-          [[:div.inline-block.mr-1 (ui/render-keyboard-shortcut (shortcut-dh/gen-shortcut-seq :editor/new-line)
-                                                                :shortcut-id :editor/new-line)]])]
-        [:li
-         [:p.inline-block.mr-1
-          (interpolate-rich-text-node
-           (t :editor.document-mode/toggle-desc)
-           [[:div.inline-block.mr-1
-             (ui/render-keyboard-shortcut (shortcut-dh/gen-shortcut-seq :ui/toggle-document-mode)
-                                          :shortcut-id :ui/toggle-document-mode)]])]]]]])))
+  (let [document-mode? (state/use-sub [:document/mode?])]
+    (when document-mode?
+      (ui/tooltip
+       [:a.block.px-1.text-sm.font-medium.bg-base-2.rounded-md.mx-2
+        {:on-click state/toggle-document-mode!}
+        "D"]
+       [:div.p-2
+        [:p.mb-2 [:b (t :editor.document-mode/title)]]
+        [:ul
+         [:li
+          [:p.inline-block.mr-1
+           (interpolate-rich-text-node
+            (t :editor.document-mode/new-block-hint)
+            [[:div.inline-block.mr-1 (ui/render-keyboard-shortcut (shortcut-dh/gen-shortcut-seq :editor/new-line)
+                                                                  :shortcut-id :editor/new-line)]])]
+          [:li
+           [:p.inline-block.mr-1
+            (interpolate-rich-text-node
+             (t :editor.document-mode/toggle-desc)
+             [[:div.inline-block.mr-1
+               (ui/render-keyboard-shortcut (shortcut-dh/gen-shortcut-seq :ui/toggle-document-mode)
+                                            :shortcut-id :ui/toggle-document-mode)]])]]]]]))))
 
 (def help-menu-items
   [{:title (t :help/handbook) :icon "book-2" :on-click #(handbooks/toggle-handbooks)}
@@ -271,8 +272,10 @@
                       (state/set-state! :ui/help-open? false))}
          [:span.flex.items-center.pr-2.opacity-40 (ui/icon icon {:size 20})]
          [:strong.font-normal title]]))]
-   [:div.ft.pl-11.pb-3
-    [:span.opacity.text-xs.opacity-30 "Logseq " version]]])
+   [:div.ft.pl-11.pb-3.flex.flex-col.gap-1
+    [:span.opacity.text-xs.opacity-30 "Logseq " version]
+    (when-let [revision (not-empty (build-version/revision))]
+      [:span.opacity.text-xs.opacity-30 (t :help/revision revision)])]])
 
 (hsx/defc help-button
   []
@@ -282,7 +285,9 @@
      [:div.cp__sidebar-help-btn
       (ui/tooltip
        [:div.inner
-        {:on-click #(state/toggle! :ui/help-open?)}
+        {:on-click (fn [e]
+                     (util/stop-propagation e)
+                     (state/toggle! :ui/help-open?))}
         [:svg.scale-125 {:stroke "currentColor", :fill "none", :stroke-linejoin "round", :width "24", :view-box "0 0 24 24", :xmlns "http://www.w3.org/2000/svg", :stroke-linecap "round", :stroke-width "2", :class "icon icon-tabler icon-tabler-help-small", :height "24"}
          [:path {:stroke "none", :d "M0 0h24v24H0z", :fill "none"}]
          [:path {:d "M12 16v.01"}]

@@ -4,6 +4,7 @@
             [frontend.colors :as colors]
             [frontend.common.missionary :as c.m]
             [frontend.components.assets :as assets]
+            [frontend.components.email :as email-component]
             [frontend.components.shortcut :as shortcut]
             [frontend.components.svg :as svg]
             [frontend.config :as config]
@@ -503,8 +504,7 @@
             new-home (dissoc home :page)]
         (p/do!
          (config-handler/set-config! :default-home new-home)
-         (config-handler/set-config! :feature/enable-journals? true)
-         (notification/show! (t :settings.features/journals-enable-success) :success)))
+         (notification/show! (t :settings.features/home-default-page-update-success) :success)))
 
       ;; FIXME: home page should be db id instead of page name
       (ldb/get-page (db/get-db) value)
@@ -515,14 +515,6 @@
 
       :else
       (notification/show! (t :settings.features/page-not-found value) :warning))))
-
-(defn journal-row [enable-journals?]
-  (toggle "enable_journals"
-          (t :settings.features/enable-journals)
-          enable-journals?
-          (fn []
-            (let [value (not enable-journals?)]
-              (config-handler/set-config! :feature/enable-journals? value)))))
 
 (defn enable-all-pages-public-row [t enable-all-pages-public?]
   (toggle "all pages public"
@@ -559,6 +551,30 @@
             (let [mode (not developer-mode?)]
               (state/set-developer-mode! mode)))
           [:div.text-sm.opacity-50 (t :settings.advanced/developer-mode-desc)]))
+
+(defn semantic-search-setting-supported?
+  [{:keys [platform arch]}]
+  (and (= "darwin" platform)
+       (= "arm64" arch)))
+
+(defn semantic-search-row [t enabled?]
+  (toggle "semantic_search"
+          (t :settings.features/semantic-search)
+          enabled?
+          (fn []
+            (let [enabled?' (not enabled?)]
+              (if enabled?'
+                (-> (ipc/ipc :userAppCfgs :feature/enable-semantic-search? true)
+                    (p/then (fn [_]
+                              (state/set-state! [:electron/user-cfgs :feature/enable-semantic-search?] true)))
+                    (p/catch (fn [_error]
+                               (notification/show!
+                                (t :settings.features/semantic-search-python3-missing)
+                                :warning))))
+                (do
+                  (state/set-state! [:electron/user-cfgs :feature/enable-semantic-search?] false)
+                  (ipc/ipc :userAppCfgs :feature/enable-semantic-search? false)))))
+          [:div.text-sm.opacity-50 (t :settings.features/semantic-search-desc)]))
 
 (hsx/defc plugin-enabled-switcher
   [t]
@@ -755,7 +771,7 @@
 (hsx/defc markdown-mirror-row
   [t]
   (let [repo (state/get-current-repo)
-        repo-config (when repo (state/use-sub [:config repo]))
+        repo-config (state/use-sub [:config repo])
         enabled? (true? (:feature/markdown-mirror? repo-config))
         *regenerating? (hooks/use-memo #(atom false) [])
         [regenerating?] (hooks/use-atom *regenerating?)
@@ -804,9 +820,10 @@
 
 (hsx/defc auto-chmod-row
   [t]
-  (let [enabled? (if (= nil (state/use-sub [:electron/user-cfgs :feature/enable-automatic-chmod?]))
+  (let [auto-chmod-enabled? (state/use-sub [:electron/user-cfgs :feature/enable-automatic-chmod?])
+        enabled? (if (nil? auto-chmod-enabled?)
                    true
-                   (state/use-sub [:electron/user-cfgs :feature/enable-automatic-chmod?]))]
+                   auto-chmod-enabled?)]
     (toggle
      "automatic-chmod"
      (t :settings.advanced/auto-chmod)
@@ -1018,8 +1035,9 @@
            [:input.rounded.border.px-2.py-1.box-border {:class "border-blue-500 bg-black/25 w-full"}]]
           [:div.flex-1.flex.flex-col.gap-2.col-span-2
            [:label.text-sm.font-semibold (t :account/username)]
-           [:input.rounded.border.px-2.py-1.box-border {:class "border-blue-500 bg-black/25"
-                                                        :value (user-handler/email)}]]]
+           [:div.rounded.border.px-2.py-1.box-border
+            {:class "border-blue-500 bg-black/25"}
+            (email-component/email-address {:email (user-handler/email)})]]]
          [:div (t :account/authentication)]
          [:div.col-span-2
           [:div.grid.grid-cols-2.gap-4
@@ -1089,26 +1107,26 @@
 (hsx/defc settings-features
   []
   (let [_config (state/use-sub :config)
+        app-base-info (state/use-sub :electron/app-base-info)
+        app-user-cfgs (state/use-sub :electron/user-cfgs)
         default-home-page (state/use-sub-default-home-page)
         current-repo (state/get-current-repo)
-        enable-journals? (state/enable-journals? current-repo)
         enable-flashcards? (state/enable-flashcards? current-repo)
+        semantic-search-enabled? (true? (:feature/enable-semantic-search? app-user-cfgs))
         logged-in? (user-handler/logged-in?)]
     [:div.panel-wrap.is-features.mb-8
-     (journal-row enable-journals?)
-     (when (not enable-journals?)
-       [:div.it.sm:grid.sm:grid-cols-3.sm:gap-4.sm:items-center
-        [:label.block.text-sm.font-medium.leading-5.opacity-70
-         {:for "default page"}
-         (t :settings.features/home-default-page)]
-        [:div.mt-1.sm:mt-0.sm:col-span-2
-         [:div.max-w-lg.rounded-md.sm:max-w-xs
-          [:input#home-default-page.form-input.is-small.transition.duration-150.ease-in-out
-           {:default-value default-home-page
-            :on-blur       update-home-page
-            :on-key-press  (fn [e]
-                             (when (= "Enter" (util/ekey e))
-                               (update-home-page e)))}]]]])
+     [:div.it.sm:grid.sm:grid-cols-3.sm:gap-4.sm:items-center
+      [:label.block.text-sm.font-medium.leading-5.opacity-70
+       {:for "default page"}
+       (t :settings.features/home-default-page)]
+      [:div.mt-1.sm:mt-0.sm:col-span-2
+       [:div.max-w-lg.rounded-md.sm:max-w-xs
+        [:input#home-default-page.form-input.is-small.transition.duration-150.ease-in-out
+         {:default-value default-home-page
+          :on-blur       update-home-page
+          :on-key-press  (fn [e]
+                           (when (= "Enter" (util/ekey e))
+                             (update-home-page e)))}]]]]
      (when (and web-platform? config/feature-plugin-system-on?)
        (plugin-system-switcher-row))
      (when (util/electron?)
@@ -1116,12 +1134,14 @@
      (when (util/electron?)
        (markdown-mirror-row t))
      (flashcards-switcher-row enable-flashcards?)
+     (when (semantic-search-setting-supported? app-base-info)
+       (semantic-search-row t semantic-search-enabled?))
      (when-not web-platform?
        [:div.mt-1.sm:mt-0.sm:col-span-2
         [:hr]
         (if logged-in?
           [:div
-           (user-handler/email)
+           (email-component/email-address {:email (user-handler/email)})
            [:p (ui/button (t :ui/logout) {:class "p-1"
                                           :icon "logout"
                                           :on-click user-handler/logout})]]
@@ -1173,7 +1193,6 @@
      {:on-key-press (fn [e]
                       (when (= "Enter" (.-key e))
                         (invite-user!)))}
-     [:h2.opacity-50.font-medium (t :collaboration/members)]
      [:div.users.flex.flex-col.gap-1
       (if loading?
         (for [i (range 2)]
@@ -1189,7 +1208,9 @@
             [:div.flex.flex-row.items-center.gap-2
              {:key (str "user-" (or user-uuid user-name))}
              [:div user-name]
-             (when user-email [:div.opacity-50.text-sm user-email])
+             (when user-email
+               (email-component/email-address {:email user-email
+                                               :class "opacity-50 text-sm"}))
              (when graph<->user-user-type [:div.opacity-50.text-sm (name graph<->user-user-type)])
              (when can-remove?
                (shui/dropdown-menu
@@ -1210,7 +1231,7 @@
                                  (when (and graph-uuid member-id)
                                    (-> (rtc-handler/<rtc-remove-member! graph-uuid member-id)
                                        (p/then (fn []
-                                                 (rtc-handler/<rtc-get-users-info)))
+                                                 (rtc-handler/<rtc-get-users-info true)))
                                        (p/catch (fn [e]
                                                   (notification/show! (t :collaboration/remove-access-error) :error)
                                                   (log/error :db-sync/remove-member-failed {:error e
@@ -1409,6 +1430,7 @@
     (hooks/use-effect!
      (fn []
        (state/load-app-user-cfgs)
+       (state/load-electron-app-base-info)
        (let [active-tab (if (and (= _active-tab :ai) (not (util/electron?)))
                           :advanced
                           _active-tab)]
